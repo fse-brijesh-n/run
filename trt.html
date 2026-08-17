@@ -1,0 +1,1279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TRT Central - Management Portal</title>
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --secondary: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --bg: #f8fafc;
+            --card: #ffffff;
+            --text: #1e293b;
+            --border: #e2e8f0;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: var(--bg); color: var(--text); display: flex; min-height: 100vh; }
+        .sidebar { width: 250px; background: #1e293b; color: white; padding: 20px 0; display: flex; flex-direction: column; position: fixed; height: 100vh; overflow-y: auto; }
+        .sidebar h2 { padding: 0 20px 20px; border-bottom: 1px solid #334155; }
+        .sidebar a { color: #cbd5e1; padding: 12px 20px; text-decoration: none; display: block; transition: 0.3s; }
+        .sidebar a:hover, .sidebar a.active { background: #334155; color: white; }
+        .main { margin-left: 250px; flex: 1; padding: 20px; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; transition: 0.3s; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { background: #4338ca; }
+        .btn-success { background: var(--secondary); color: white; }
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-warning { background: var(--warning); color: white; }
+        .btn-sm { padding: 4px 8px; font-size: 0.85rem; }
+        .card { background: var(--card); border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+        th { background: #f1f5f9; }
+        .badge { padding: 4px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+        .badge-success { background: #dcfce7; color: #166534; }
+        .badge-warning { background: #fef9c3; color: #854d0e; }
+        .badge-danger { background: #fee2e2; color: #991b1b; }
+        .badge-info { background: #e0f2fe; color: #075985; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 100; justify-content: center; align-items: center; }
+        .modal-content { background: white; padding: 25px; border-radius: 12px; width: 500px; max-height: 90vh; overflow-y: auto; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: 500; }
+        .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; }
+        .flex { display: flex; gap: 10px; align-items: center; }
+        .hidden { display: none; }
+        .notification-item { padding: 10px; border-bottom: 1px solid var(--border); cursor: pointer; }
+        .notification-item.unread { background: #eef2ff; }
+        .dashboard-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .stat-card { background: var(--card); padding: 15px; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .stat-value { font-size: 2rem; font-weight: bold; color: var(--primary); }
+        @media (max-width: 768px) { .sidebar { width: 100%; position: static; height: auto; } .main { margin-left: 0; } }
+    </style>
+</head>
+<body>
+    <!-- Sidebar -->
+    <div class="sidebar" id="sidebar">
+        <h2>TRT Central</h2>
+        <div id="navLinks"></div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main">
+        <div class="header">
+            <h1 id="pageTitle">Dashboard</h1>
+            <div class="flex">
+                <span id="userInfo"></span>
+                <button class="btn btn-danger btn-sm" onclick="logout()">Logout</button>
+            </div>
+        </div>
+        <div id="content"></div>
+    </div>
+
+    <!-- Modal Container -->
+    <div id="modalContainer" class="modal">
+        <div class="modal-content" id="modalContent"></div>
+    </div>
+
+    <script>
+        // ==================== DATA STORE ====================
+        const DB = {
+            users: [],
+            clients: [],
+            developers: [],
+            projects: [],
+            tasks: [],
+            invoices: [],
+            payroll: [],
+            notifications: [],
+            githubRepos: [],
+            currentUser: null,
+        };
+
+        // Load from localStorage or seed
+        function loadData() {
+            const saved = localStorage.getItem('trt_central_db');
+            if (saved) {
+                Object.assign(DB, JSON.parse(saved));
+            } else {
+                seedData();
+            }
+        }
+
+        function saveData() {
+            localStorage.setItem('trt_central_db', JSON.stringify(DB));
+        }
+
+        function seedData() {
+            // Seed users
+            DB.users = [
+                { id: 'u1', username: 'admin', password: 'admin123', role: 'admin', name: 'Admin User', email: 'admin@trt.com' },
+                { id: 'u2', username: 'client1', password: 'client123', role: 'client', name: 'John Smith', email: 'john@client.com', clientId: 'c1' },
+                { id: 'u3', username: 'dev1', password: 'dev123', role: 'developer', name: 'Alice Johnson', email: 'alice@dev.com', developerId: 'd1' },
+                { id: 'u4', username: 'dev2', password: 'dev123', role: 'developer', name: 'Bob Williams', email: 'bob@dev.com', developerId: 'd2' },
+            ];
+            DB.clients = [
+                { id: 'c1', name: 'John Smith', company: 'TechCorp', email: 'john@techcorp.com', phone: '555-0101', billingAddress: '123 Main St' },
+                { id: 'c2', name: 'Sarah Davis', company: 'WebSolutions', email: 'sarah@websolutions.com', phone: '555-0102', billingAddress: '456 Oak Ave' },
+            ];
+            DB.developers = [
+                { id: 'd1', name: 'Alice Johnson', email: 'alice@dev.com', skills: 'React, Node', hourlyRate: 50, salaryType: 'hourly', fixedSalary: 0, percentage: 0, status: 'active' },
+                { id: 'd2', name: 'Bob Williams', email: 'bob@dev.com', skills: 'Python, Django', hourlyRate: 60, salaryType: 'fixed', fixedSalary: 4000, percentage: 0, status: 'active' },
+            ];
+            DB.projects = [
+                { id: 'p1', clientId: 'c1', name: 'E-commerce Website', description: 'Build a full-stack e-commerce platform', budget: 10000, startDate: '2025-01-01', endDate: '2025-03-01', status: 'in-progress', developerIds: ['d1'], createdAt: '2025-01-01' },
+                { id: 'p2', clientId: 'c2', name: 'Mobile App', description: 'Develop a cross-platform mobile app', budget: 15000, startDate: '2025-02-01', endDate: '2025-04-01', status: 'pending', developerIds: ['d2'], createdAt: '2025-02-01' },
+            ];
+            DB.tasks = [
+                { id: 't1', projectId: 'p1', title: 'Design database schema', description: 'Create ER diagram and SQL scripts', assigneeId: 'd1', status: 'completed', dueDate: '2025-01-15', githubIssueId: 'issue-101' },
+                { id: 't2', projectId: 'p1', title: 'Develop REST API', description: 'Implement endpoints for products', assigneeId: 'd1', status: 'in-progress', dueDate: '2025-02-15', githubIssueId: 'issue-102' },
+                { id: 't3', projectId: 'p2', title: 'UI Design', description: 'Create wireframes and high-fidelity designs', assigneeId: 'd2', status: 'pending', dueDate: '2025-03-01', githubIssueId: null },
+            ];
+            DB.invoices = [
+                { id: 'inv1', projectId: 'p1', clientId: 'c1', amount: 5000, status: 'paid', dueDate: '2025-01-20', createdAt: '2025-01-01', paidAt: '2025-01-18' },
+                { id: 'inv2', projectId: 'p1', clientId: 'c1', amount: 5000, status: 'sent', dueDate: '2025-02-20', createdAt: '2025-02-01', paidAt: null },
+            ];
+            DB.payroll = [
+                { id: 'pay1', developerId: 'd1', projectId: 'p1', amount: 2500, status: 'paid', period: '2025-01', createdAt: '2025-01-31', paidAt: '2025-02-01' },
+                { id: 'pay2', developerId: 'd1', projectId: 'p1', amount: 2000, status: 'pending', period: '2025-02', createdAt: '2025-02-28', paidAt: null },
+            ];
+            DB.notifications = [
+                { id: 'n1', userId: 'u1', message: 'New invoice created for TechCorp', read: false, createdAt: '2025-02-01T10:00:00' },
+                { id: 'n2', userId: 'u2', message: 'Your project E-commerce Website is in progress', read: false, createdAt: '2025-01-15T09:00:00' },
+            ];
+            DB.githubRepos = [
+                { id: 'r1', name: 'trt/ecommerce', owner: 'trt', connectedProject: 'p1' },
+                { id: 'r2', name: 'trt/mobileapp', owner: 'trt', connectedProject: 'p2' },
+            ];
+            saveData();
+        }
+
+        // ==================== AUTH ====================
+        function showLogin() {
+            document.getElementById('sidebar').style.display = 'none';
+            document.querySelector('.main').innerHTML = `
+                <div style="max-width:400px;margin:50px auto;background:white;padding:30px;border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,0.1);">
+                    <h2 style="text-align:center;margin-bottom:20px;">TRT Central Login</h2>
+                    <div class="form-group">
+                        <label>Username</label>
+                        <input type="text" id="loginUsername" placeholder="admin / client1 / dev1">
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="loginPassword" placeholder="admin123 / client123 / dev123">
+                    </div>
+                    <button class="btn btn-primary" style="width:100%;" onclick="login()">Login</button>
+                    <p style="margin-top:15px;text-align:center;">Demo: admin/admin123, client1/client123, dev1/dev123</p>
+                </div>
+            `;
+            document.querySelector('.header').style.display = 'none';
+        }
+
+        function login() {
+            const username = document.getElementById('loginUsername').value.trim();
+            const password = document.getElementById('loginPassword').value.trim();
+            const user = DB.users.find(u => u.username === username && u.password === password);
+            if (user) {
+                DB.currentUser = user;
+                saveData();
+                initApp();
+            } else {
+                alert('Invalid credentials');
+            }
+        }
+
+        function logout() {
+            DB.currentUser = null;
+            saveData();
+            showLogin();
+        }
+
+        // ==================== APP INIT ====================
+        function initApp() {
+            document.getElementById('sidebar').style.display = 'flex';
+            document.querySelector('.header').style.display = 'flex';
+            renderNav();
+            document.getElementById('userInfo').textContent = `${DB.currentUser.name} (${DB.currentUser.role})`;
+            navigate('dashboard');
+        }
+
+        function renderNav() {
+            const nav = document.getElementById('navLinks');
+            let links = [];
+            const role = DB.currentUser.role;
+            if (role === 'admin') {
+                links = [
+                    { href: 'dashboard', label: 'Dashboard', icon: '📊' },
+                    { href: 'clients', label: 'Clients', icon: '👥' },
+                    { href: 'developers', label: 'Developers', icon: '💻' },
+                    { href: 'projects', label: 'Projects', icon: '📁' },
+                    { href: 'tasks', label: 'Tasks', icon: '✅' },
+                    { href: 'invoices', label: 'Invoices', icon: '🧾' },
+                    { href: 'payroll', label: 'Payroll', icon: '💰' },
+                    { href: 'github', label: 'GitHub', icon: '🔗' },
+                    { href: 'reports', label: 'Reports', icon: '📈' },
+                    { href: 'notifications', label: 'Notifications', icon: '🔔' },
+                ];
+            } else if (role === 'client') {
+                links = [
+                    { href: 'dashboard', label: 'Dashboard', icon: '📊' },
+                    { href: 'myprojects', label: 'My Projects', icon: '📁' },
+                    { href: 'myinvoices', label: 'Invoices', icon: '🧾' },
+                    { href: 'notifications', label: 'Notifications', icon: '🔔' },
+                ];
+            } else if (role === 'developer') {
+                links = [
+                    { href: 'dashboard', label: 'Dashboard', icon: '📊' },
+                    { href: 'mytasks', label: 'My Tasks', icon: '✅' },
+                    { href: 'mypayroll', label: 'My Payroll', icon: '💰' },
+                    { href: 'notifications', label: 'Notifications', icon: '🔔' },
+                ];
+            }
+            nav.innerHTML = links.map(l => `<a href="#" data-page="${l.href}" class="${l.href === 'dashboard' ? 'active' : ''}">${l.icon} ${l.label}</a>`).join('');
+            // Add event listeners
+            nav.querySelectorAll('a').forEach(a => {
+                a.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    navigate(a.dataset.page);
+                });
+            });
+        }
+
+        function navigate(page) {
+            document.querySelectorAll('#navLinks a').forEach(a => a.classList.remove('active'));
+            const link = document.querySelector(`#navLinks a[data-page="${page}"]`);
+            if (link) link.classList.add('active');
+            const role = DB.currentUser.role;
+            let title = page.charAt(0).toUpperCase() + page.slice(1);
+            document.getElementById('pageTitle').textContent = title;
+            const content = document.getElementById('content');
+            switch (page) {
+                case 'dashboard': renderDashboard(content); break;
+                case 'clients': renderClients(content); break;
+                case 'developers': renderDevelopers(content); break;
+                case 'projects': renderProjects(content); break;
+                case 'tasks': renderTasks(content); break;
+                case 'invoices': renderInvoices(content); break;
+                case 'payroll': renderPayroll(content); break;
+                case 'github': renderGithub(content); break;
+                case 'reports': renderReports(content); break;
+                case 'notifications': renderNotifications(content); break;
+                case 'myprojects': renderMyProjects(content); break;
+                case 'myinvoices': renderMyInvoices(content); break;
+                case 'mytasks': renderMyTasks(content); break;
+                case 'mypayroll': renderMyPayroll(content); break;
+                default: content.innerHTML = '<h2>Page not found</h2>';
+            }
+        }
+
+        // ==================== DASHBOARD ====================
+        function renderDashboard(container) {
+            const role = DB.currentUser.role;
+            if (role === 'admin') {
+                const totalClients = DB.clients.length;
+                const totalDevs = DB.developers.length;
+                const activeProjects = DB.projects.filter(p => p.status === 'in-progress').length;
+                const pendingInvoices = DB.invoices.filter(i => i.status === 'sent' || i.status === 'overdue').length;
+                const totalRevenue = DB.invoices.filter(i => i.status === 'paid').reduce((sum, i) => sum + i.amount, 0);
+                container.innerHTML = `
+                    <div class="dashboard-stats">
+                        <div class="stat-card"><div class="stat-value">${totalClients}</div><div>Clients</div></div>
+                        <div class="stat-card"><div class="stat-value">${totalDevs}</div><div>Developers</div></div>
+                        <div class="stat-card"><div class="stat-value">${activeProjects}</div><div>Active Projects</div></div>
+                        <div class="stat-card"><div class="stat-value">$${totalRevenue.toLocaleString()}</div><div>Paid Revenue</div></div>
+                        <div class="stat-card"><div class="stat-value">${pendingInvoices}</div><div>Pending Invoices</div></div>
+                    </div>
+                    <div class="card">
+                        <h3>Recent Projects</h3>
+                        <table>
+                            <thead><tr><th>Name</th><th>Client</th><th>Status</th><th>Budget</th></tr></thead>
+                            <tbody>
+                                ${DB.projects.slice(0,5).map(p => {
+                                    const client = DB.clients.find(c => c.id === p.clientId);
+                                    return `<tr><td>${p.name}</td><td>${client ? client.company : 'N/A'}</td><td><span class="badge badge-info">${p.status}</span></td><td>$${p.budget.toLocaleString()}</td></tr>`;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            } else if (role === 'client') {
+                const clientId = DB.currentUser.clientId;
+                const myProjects = DB.projects.filter(p => p.clientId === clientId);
+                const myInvoices = DB.invoices.filter(i => i.clientId === clientId);
+                const totalDue = myInvoices.filter(i => i.status !== 'paid').reduce((s,i) => s + i.amount, 0);
+                container.innerHTML = `
+                    <div class="dashboard-stats">
+                        <div class="stat-card"><div class="stat-value">${myProjects.length}</div><div>My Projects</div></div>
+                        <div class="stat-card"><div class="stat-value">${myInvoices.length}</div><div>Invoices</div></div>
+                        <div class="stat-card"><div class="stat-value">$${totalDue.toLocaleString()}</div><div>Outstanding</div></div>
+                    </div>
+                    <div class="card">
+                        <h3>My Projects</h3>
+                        <table>
+                            <thead><tr><th>Project</th><th>Status</th><th>Budget</th><th>Progress</th></tr></thead>
+                            <tbody>
+                                ${myProjects.map(p => {
+                                    const tasks = DB.tasks.filter(t => t.projectId === p.id);
+                                    const completed = tasks.filter(t => t.status === 'completed').length;
+                                    const progress = tasks.length ? Math.round(completed/tasks.length*100) : 0;
+                                    return `<tr><td>${p.name}</td><td><span class="badge badge-info">${p.status}</span></td><td>$${p.budget.toLocaleString()}</td><td>${progress}%</td></tr>`;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            } else if (role === 'developer') {
+                const devId = DB.currentUser.developerId;
+                const myTasks = DB.tasks.filter(t => t.assigneeId === devId);
+                const completed = myTasks.filter(t => t.status === 'completed').length;
+                const pendingPayroll = DB.payroll.filter(p => p.developerId === devId && p.status !== 'paid').reduce((s,p) => s + p.amount, 0);
+                container.innerHTML = `
+                    <div class="dashboard-stats">
+                        <div class="stat-card"><div class="stat-value">${myTasks.length}</div><div>Assigned Tasks</div></div>
+                        <div class="stat-card"><div class="stat-value">${completed}</div><div>Completed</div></div>
+                        <div class="stat-card"><div class="stat-value">$${pendingPayroll.toLocaleString()}</div><div>Pending Pay</div></div>
+                    </div>
+                    <div class="card">
+                        <h3>My Tasks</h3>
+                        <table>
+                            <thead><tr><th>Task</th><th>Project</th><th>Status</th><th>Due Date</th></tr></thead>
+                            <tbody>
+                                ${myTasks.map(t => {
+                                    const proj = DB.projects.find(p => p.id === t.projectId);
+                                    return `<tr><td>${t.title}</td><td>${proj ? proj.name : 'N/A'}</td><td><span class="badge ${t.status === 'completed' ? 'badge-success' : t.status === 'in-progress' ? 'badge-warning' : 'badge-info'}">${t.status}</span></td><td>${t.dueDate || 'N/A'}</td></tr>`;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            }
+        }
+
+        // ==================== CLIENTS ====================
+        function renderClients(container) {
+            container.innerHTML = `
+                <div class="card">
+                    <div class="flex" style="justify-content:space-between;margin-bottom:15px;">
+                        <h3>Clients</h3>
+                        <button class="btn btn-primary" onclick="showClientModal()">Add Client</button>
+                    </div>
+                    <table>
+                        <thead><tr><th>Name</th><th>Company</th><th>Email</th><th>Phone</th><th>Actions</th></tr></thead>
+                        <tbody>
+                            ${DB.clients.map(c => `
+                                <tr>
+                                    <td>${c.name}</td>
+                                    <td>${c.company}</td>
+                                    <td>${c.email}</td>
+                                    <td>${c.phone}</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-warning" onclick="editClient('${c.id}')">Edit</button>
+                                        <button class="btn btn-sm btn-danger" onclick="deleteClient('${c.id}')">Delete</button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        function showClientModal(clientId = null) {
+            const client = clientId ? DB.clients.find(c => c.id === clientId) : null;
+            const modal = document.getElementById('modalContainer');
+            modal.style.display = 'flex';
+            document.getElementById('modalContent').innerHTML = `
+                <h3>${client ? 'Edit' : 'Add'} Client</h3>
+                <div class="form-group"><label>Name</label><input type="text" id="clientName" value="${client ? client.name : ''}"></div>
+                <div class="form-group"><label>Company</label><input type="text" id="clientCompany" value="${client ? client.company : ''}"></div>
+                <div class="form-group"><label>Email</label><input type="email" id="clientEmail" value="${client ? client.email : ''}"></div>
+                <div class="form-group"><label>Phone</label><input type="text" id="clientPhone" value="${client ? client.phone : ''}"></div>
+                <div class="form-group"><label>Billing Address</label><input type="text" id="clientAddress" value="${client ? client.billingAddress : ''}"></div>
+                <div class="flex" style="justify-content:flex-end;">
+                    <button class="btn" onclick="closeModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="saveClient('${clientId || ''}')">Save</button>
+                </div>
+            `;
+        }
+
+        function saveClient(id) {
+            const data = {
+                name: document.getElementById('clientName').value,
+                company: document.getElementById('clientCompany').value,
+                email: document.getElementById('clientEmail').value,
+                phone: document.getElementById('clientPhone').value,
+                billingAddress: document.getElementById('clientAddress').value,
+            };
+            if (id) {
+                const client = DB.clients.find(c => c.id === id);
+                Object.assign(client, data);
+            } else {
+                const newId = 'c' + Date.now();
+                DB.clients.push({ id: newId, ...data });
+            }
+            saveData();
+            closeModal();
+            navigate('clients');
+        }
+
+        function editClient(id) { showClientModal(id); }
+        function deleteClient(id) {
+            if (confirm('Delete this client?')) {
+                DB.clients = DB.clients.filter(c => c.id !== id);
+                // Also remove related projects, invoices, etc. (simplified)
+                saveData();
+                navigate('clients');
+            }
+        }
+
+        // ==================== DEVELOPERS ====================
+        function renderDevelopers(container) {
+            container.innerHTML = `
+                <div class="card">
+                    <div class="flex" style="justify-content:space-between;margin-bottom:15px;">
+                        <h3>Developers</h3>
+                        <button class="btn btn-primary" onclick="showDeveloperModal()">Add Developer</button>
+                    </div>
+                    <table>
+                        <thead><tr><th>Name</th><th>Email</th><th>Skills</th><th>Hourly Rate</th><th>Salary Type</th><th>Actions</th></tr></thead>
+                        <tbody>
+                            ${DB.developers.map(d => `
+                                <tr>
+                                    <td>${d.name}</td>
+                                    <td>${d.email}</td>
+                                    <td>${d.skills}</td>
+                                    <td>$${d.hourlyRate}/hr</td>
+                                    <td>${d.salaryType}</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-warning" onclick="editDeveloper('${d.id}')">Edit</button>
+                                        <button class="btn btn-sm btn-danger" onclick="deleteDeveloper('${d.id}')">Delete</button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        function showDeveloperModal(devId = null) {
+            const dev = devId ? DB.developers.find(d => d.id === devId) : null;
+            const modal = document.getElementById('modalContainer');
+            modal.style.display = 'flex';
+            document.getElementById('modalContent').innerHTML = `
+                <h3>${dev ? 'Edit' : 'Add'} Developer</h3>
+                <div class="form-group"><label>Name</label><input type="text" id="devName" value="${dev ? dev.name : ''}"></div>
+                <div class="form-group"><label>Email</label><input type="email" id="devEmail" value="${dev ? dev.email : ''}"></div>
+                <div class="form-group"><label>Skills</label><input type="text" id="devSkills" value="${dev ? dev.skills : ''}"></div>
+                <div class="form-group"><label>Hourly Rate</label><input type="number" id="devHourly" value="${dev ? dev.hourlyRate : 50}"></div>
+                <div class="form-group"><label>Salary Type</label>
+                    <select id="devSalaryType">
+                        <option value="hourly" ${dev && dev.salaryType === 'hourly' ? 'selected' : ''}>Hourly</option>
+                        <option value="fixed" ${dev && dev.salaryType === 'fixed' ? 'selected' : ''}>Fixed</option>
+                        <option value="percentage" ${dev && dev.salaryType === 'percentage' ? 'selected' : ''}>Percentage</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>Fixed Salary (if fixed)</label><input type="number" id="devFixed" value="${dev ? dev.fixedSalary : 0}"></div>
+                <div class="form-group"><label>Percentage (if percentage)</label><input type="number" id="devPercent" value="${dev ? dev.percentage : 0}"></div>
+                <div class="flex" style="justify-content:flex-end;">
+                    <button class="btn" onclick="closeModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="saveDeveloper('${devId || ''}')">Save</button>
+                </div>
+            `;
+        }
+
+        function saveDeveloper(id) {
+            const data = {
+                name: document.getElementById('devName').value,
+                email: document.getElementById('devEmail').value,
+                skills: document.getElementById('devSkills').value,
+                hourlyRate: parseFloat(document.getElementById('devHourly').value),
+                salaryType: document.getElementById('devSalaryType').value,
+                fixedSalary: parseFloat(document.getElementById('devFixed').value) || 0,
+                percentage: parseFloat(document.getElementById('devPercent').value) || 0,
+            };
+            if (id) {
+                const dev = DB.developers.find(d => d.id === id);
+                Object.assign(dev, data);
+            } else {
+                const newId = 'd' + Date.now();
+                DB.developers.push({ id: newId, ...data, status: 'active' });
+            }
+            saveData();
+            closeModal();
+            navigate('developers');
+        }
+
+        function editDeveloper(id) { showDeveloperModal(id); }
+        function deleteDeveloper(id) {
+            if (confirm('Delete this developer?')) {
+                DB.developers = DB.developers.filter(d => d.id !== id);
+                saveData();
+                navigate('developers');
+            }
+        }
+
+        // ==================== PROJECTS ====================
+        function renderProjects(container) {
+            container.innerHTML = `
+                <div class="card">
+                    <div class="flex" style="justify-content:space-between;margin-bottom:15px;">
+                        <h3>Projects</h3>
+                        <button class="btn btn-primary" onclick="showProjectModal()">Add Project</button>
+                    </div>
+                    <table>
+                        <thead><tr><th>Name</th><th>Client</th><th>Budget</th><th>Status</th><th>Developers</th><th>Actions</th></tr></thead>
+                        <tbody>
+                            ${DB.projects.map(p => {
+                                const client = DB.clients.find(c => c.id === p.clientId);
+                                const devNames = p.developerIds.map(id => DB.developers.find(d => d.id === id)?.name || 'Unknown').join(', ');
+                                return `<tr>
+                                    <td>${p.name}</td>
+                                    <td>${client ? client.company : 'N/A'}</td>
+                                    <td>$${p.budget.toLocaleString()}</td>
+                                    <td><span class="badge ${p.status === 'completed' ? 'badge-success' : p.status === 'in-progress' ? 'badge-warning' : 'badge-info'}">${p.status}</span></td>
+                                    <td>${devNames}</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-warning" onclick="editProject('${p.id}')">Edit</button>
+                                        <button class="btn btn-sm btn-danger" onclick="deleteProject('${p.id}')">Delete</button>
+                                    </td>
+                                </tr>`;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        function showProjectModal(projectId = null) {
+            const project = projectId ? DB.projects.find(p => p.id === projectId) : null;
+            const clients = DB.clients;
+            const devs = DB.developers;
+            const selectedDevs = project ? project.developerIds : [];
+            const modal = document.getElementById('modalContainer');
+            modal.style.display = 'flex';
+            document.getElementById('modalContent').innerHTML = `
+                <h3>${project ? 'Edit' : 'Add'} Project</h3>
+                <div class="form-group"><label>Name</label><input type="text" id="projName" value="${project ? project.name : ''}"></div>
+                <div class="form-group"><label>Client</label>
+                    <select id="projClient">
+                        ${clients.map(c => `<option value="${c.id}" ${project && project.clientId === c.id ? 'selected' : ''}>${c.company}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="form-group"><label>Description</label><textarea id="projDesc">${project ? project.description : ''}</textarea></div>
+                <div class="form-group"><label>Budget</label><input type="number" id="projBudget" value="${project ? project.budget : 10000}"></div>
+                <div class="form-group"><label>Start Date</label><input type="date" id="projStart" value="${project ? project.startDate : ''}"></div>
+                <div class="form-group"><label>End Date</label><input type="date" id="projEnd" value="${project ? project.endDate : ''}"></div>
+                <div class="form-group"><label>Status</label>
+                    <select id="projStatus">
+                        <option value="pending" ${project && project.status === 'pending' ? 'selected' : ''}>Pending</option>
+                        <option value="in-progress" ${project && project.status === 'in-progress' ? 'selected' : ''}>In Progress</option>
+                        <option value="completed" ${project && project.status === 'completed' ? 'selected' : ''}>Completed</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>Assign Developers</label><br>
+                    ${devs.map(d => `<label><input type="checkbox" class="devCheck" value="${d.id}" ${selectedDevs.includes(d.id) ? 'checked' : ''}> ${d.name}</label><br>`).join('')}
+                </div>
+                <div class="flex" style="justify-content:flex-end;">
+                    <button class="btn" onclick="closeModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="saveProject('${projectId || ''}')">Save</button>
+                </div>
+            `;
+        }
+
+        function saveProject(id) {
+            const selectedDevs = Array.from(document.querySelectorAll('.devCheck:checked')).map(cb => cb.value);
+            const data = {
+                name: document.getElementById('projName').value,
+                clientId: document.getElementById('projClient').value,
+                description: document.getElementById('projDesc').value,
+                budget: parseFloat(document.getElementById('projBudget').value),
+                startDate: document.getElementById('projStart').value,
+                endDate: document.getElementById('projEnd').value,
+                status: document.getElementById('projStatus').value,
+                developerIds: selectedDevs,
+            };
+            if (id) {
+                const project = DB.projects.find(p => p.id === id);
+                Object.assign(project, data);
+            } else {
+                const newId = 'p' + Date.now();
+                DB.projects.push({ id: newId, ...data, createdAt: new Date().toISOString().slice(0,10) });
+            }
+            saveData();
+            closeModal();
+            navigate('projects');
+        }
+
+        function editProject(id) { showProjectModal(id); }
+        function deleteProject(id) {
+            if (confirm('Delete this project?')) {
+                DB.projects = DB.projects.filter(p => p.id !== id);
+                DB.tasks = DB.tasks.filter(t => t.projectId !== id);
+                saveData();
+                navigate('projects');
+            }
+        }
+
+        // ==================== TASKS ====================
+        function renderTasks(container) {
+            container.innerHTML = `
+                <div class="card">
+                    <div class="flex" style="justify-content:space-between;margin-bottom:15px;">
+                        <h3>Tasks</h3>
+                        <button class="btn btn-primary" onclick="showTaskModal()">Add Task</button>
+                    </div>
+                    <table>
+                        <thead><tr><th>Title</th><th>Project</th><th>Assignee</th><th>Status</th><th>Due Date</th><th>Actions</th></tr></thead>
+                        <tbody>
+                            ${DB.tasks.map(t => {
+                                const proj = DB.projects.find(p => p.id === t.projectId);
+                                const dev = DB.developers.find(d => d.id === t.assigneeId);
+                                return `<tr>
+                                    <td>${t.title}</td>
+                                    <td>${proj ? proj.name : 'N/A'}</td>
+                                    <td>${dev ? dev.name : 'Unassigned'}</td>
+                                    <td><span class="badge ${t.status === 'completed' ? 'badge-success' : t.status === 'in-progress' ? 'badge-warning' : 'badge-info'}">${t.status}</span></td>
+                                    <td>${t.dueDate || 'N/A'}</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-warning" onclick="editTask('${t.id}')">Edit</button>
+                                        <button class="btn btn-sm btn-danger" onclick="deleteTask('${t.id}')">Delete</button>
+                                    </td>
+                                </tr>`;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        function showTaskModal(taskId = null) {
+            const task = taskId ? DB.tasks.find(t => t.id === taskId) : null;
+            const projects = DB.projects;
+            const devs = DB.developers;
+            const modal = document.getElementById('modalContainer');
+            modal.style.display = 'flex';
+            document.getElementById('modalContent').innerHTML = `
+                <h3>${task ? 'Edit' : 'Add'} Task</h3>
+                <div class="form-group"><label>Title</label><input type="text" id="taskTitle" value="${task ? task.title : ''}"></div>
+                <div class="form-group"><label>Description</label><textarea id="taskDesc">${task ? task.description : ''}</textarea></div>
+                <div class="form-group"><label>Project</label>
+                    <select id="taskProject">
+                        ${projects.map(p => `<option value="${p.id}" ${task && task.projectId === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="form-group"><label>Assignee</label>
+                    <select id="taskAssignee">
+                        <option value="">Unassigned</option>
+                        ${devs.map(d => `<option value="${d.id}" ${task && task.assigneeId === d.id ? 'selected' : ''}>${d.name}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="form-group"><label>Status</label>
+                    <select id="taskStatus">
+                        <option value="pending" ${task && task.status === 'pending' ? 'selected' : ''}>Pending</option>
+                        <option value="in-progress" ${task && task.status === 'in-progress' ? 'selected' : ''}>In Progress</option>
+                        <option value="completed" ${task && task.status === 'completed' ? 'selected' : ''}>Completed</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>Due Date</label><input type="date" id="taskDue" value="${task ? task.dueDate : ''}"></div>
+                <div class="flex" style="justify-content:flex-end;">
+                    <button class="btn" onclick="closeModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="saveTask('${taskId || ''}')">Save</button>
+                </div>
+            `;
+        }
+
+        function saveTask(id) {
+            const data = {
+                title: document.getElementById('taskTitle').value,
+                description: document.getElementById('taskDesc').value,
+                projectId: document.getElementById('taskProject').value,
+                assigneeId: document.getElementById('taskAssignee').value,
+                status: document.getElementById('taskStatus').value,
+                dueDate: document.getElementById('taskDue').value,
+                githubIssueId: id ? DB.tasks.find(t => t.id === id)?.githubIssueId : null,
+            };
+            if (id) {
+                const task = DB.tasks.find(t => t.id === id);
+                Object.assign(task, data);
+            } else {
+                const newId = 't' + Date.now();
+                DB.tasks.push({ id: newId, ...data });
+            }
+            saveData();
+            closeModal();
+            navigate('tasks');
+        }
+
+        function editTask(id) { showTaskModal(id); }
+        function deleteTask(id) {
+            if (confirm('Delete this task?')) {
+                DB.tasks = DB.tasks.filter(t => t.id !== id);
+                saveData();
+                navigate('tasks');
+            }
+        }
+
+        // ==================== INVOICES ====================
+        function renderInvoices(container) {
+            container.innerHTML = `
+                <div class="card">
+                    <div class="flex" style="justify-content:space-between;margin-bottom:15px;">
+                        <h3>Invoices</h3>
+                        <button class="btn btn-primary" onclick="showInvoiceModal()">Create Invoice</button>
+                    </div>
+                    <table>
+                        <thead><tr><th>Invoice ID</th><th>Project</th><th>Client</th><th>Amount</th><th>Status</th><th>Due Date</th><th>Actions</th></tr></thead>
+                        <tbody>
+                            ${DB.invoices.map(inv => {
+                                const proj = DB.projects.find(p => p.id === inv.projectId);
+                                const client = DB.clients.find(c => c.id === inv.clientId);
+                                return `<tr>
+                                    <td>${inv.id}</td>
+                                    <td>${proj ? proj.name : 'N/A'}</td>
+                                    <td>${client ? client.company : 'N/A'}</td>
+                                    <td>$${inv.amount.toLocaleString()}</td>
+                                    <td><span class="badge ${inv.status === 'paid' ? 'badge-success' : inv.status === 'overdue' ? 'badge-danger' : 'badge-warning'}">${inv.status}</span></td>
+                                    <td>${inv.dueDate}</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-warning" onclick="editInvoice('${inv.id}')">Edit</button>
+                                        <button class="btn btn-sm btn-danger" onclick="deleteInvoice('${inv.id}')">Delete</button>
+                                        ${inv.status !== 'paid' ? `<button class="btn btn-sm btn-success" onclick="markInvoicePaid('${inv.id}')">Mark Paid</button>` : ''}
+                                    </td>
+                                </tr>`;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        function showInvoiceModal(invoiceId = null) {
+            const invoice = invoiceId ? DB.invoices.find(i => i.id === invoiceId) : null;
+            const projects = DB.projects;
+            const modal = document.getElementById('modalContainer');
+            modal.style.display = 'flex';
+            document.getElementById('modalContent').innerHTML = `
+                <h3>${invoice ? 'Edit' : 'Create'} Invoice</h3>
+                <div class="form-group"><label>Project</label>
+                    <select id="invProject">
+                        ${projects.map(p => `<option value="${p.id}" ${invoice && invoice.projectId === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="form-group"><label>Amount</label><input type="number" id="invAmount" value="${invoice ? invoice.amount : ''}"></div>
+                <div class="form-group"><label>Due Date</label><input type="date" id="invDue" value="${invoice ? invoice.dueDate : ''}"></div>
+                <div class="form-group"><label>Status</label>
+                    <select id="invStatus">
+                        <option value="draft" ${invoice && invoice.status === 'draft' ? 'selected' : ''}>Draft</option>
+                        <option value="sent" ${invoice && invoice.status === 'sent' ? 'selected' : ''}>Sent</option>
+                        <option value="paid" ${invoice && invoice.status === 'paid' ? 'selected' : ''}>Paid</option>
+                        <option value="overdue" ${invoice && invoice.status === 'overdue' ? 'selected' : ''}>Overdue</option>
+                    </select>
+                </div>
+                <div class="flex" style="justify-content:flex-end;">
+                    <button class="btn" onclick="closeModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="saveInvoice('${invoiceId || ''}')">Save</button>
+                </div>
+            `;
+        }
+
+        function saveInvoice(id) {
+            const projectId = document.getElementById('invProject').value;
+            const project = DB.projects.find(p => p.id === projectId);
+            const clientId = project ? project.clientId : '';
+            const data = {
+                projectId,
+                clientId,
+                amount: parseFloat(document.getElementById('invAmount').value),
+                dueDate: document.getElementById('invDue').value,
+                status: document.getElementById('invStatus').value,
+            };
+            if (id) {
+                const inv = DB.invoices.find(i => i.id === id);
+                Object.assign(inv, data);
+                if (data.status === 'paid' && !inv.paidAt) inv.paidAt = new Date().toISOString().slice(0,10);
+            } else {
+                const newId = 'inv' + Date.now();
+                const newInv = { id: newId, ...data, createdAt: new Date().toISOString().slice(0,10), paidAt: data.status === 'paid' ? new Date().toISOString().slice(0,10) : null };
+                DB.invoices.push(newInv);
+            }
+            saveData();
+            closeModal();
+            navigate('invoices');
+        }
+
+        function editInvoice(id) { showInvoiceModal(id); }
+        function deleteInvoice(id) {
+            if (confirm('Delete this invoice?')) {
+                DB.invoices = DB.invoices.filter(i => i.id !== id);
+                saveData();
+                navigate('invoices');
+            }
+        }
+        function markInvoicePaid(id) {
+            const inv = DB.invoices.find(i => i.id === id);
+            inv.status = 'paid';
+            inv.paidAt = new Date().toISOString().slice(0,10);
+            addNotification(DB.currentUser.id, `Invoice ${id} marked as paid`, 'invoice');
+            saveData();
+            navigate('invoices');
+        }
+
+        // ==================== PAYROLL ====================
+        function renderPayroll(container) {
+            container.innerHTML = `
+                <div class="card">
+                    <div class="flex" style="justify-content:space-between;margin-bottom:15px;">
+                        <h3>Payroll</h3>
+                        <button class="btn btn-primary" onclick="showPayrollModal()">Add Payroll Entry</button>
+                    </div>
+                    <table>
+                        <thead><tr><th>Developer</th><th>Project</th><th>Amount</th><th>Period</th><th>Status</th><th>Actions</th></tr></thead>
+                        <tbody>
+                            ${DB.payroll.map(p => {
+                                const dev = DB.developers.find(d => d.id === p.developerId);
+                                const proj = DB.projects.find(pr => pr.id === p.projectId);
+                                return `<tr>
+                                    <td>${dev ? dev.name : 'N/A'}</td>
+                                    <td>${proj ? proj.name : 'N/A'}</td>
+                                    <td>$${p.amount.toLocaleString()}</td>
+                                    <td>${p.period}</td>
+                                    <td><span class="badge ${p.status === 'paid' ? 'badge-success' : 'badge-warning'}">${p.status}</span></td>
+                                    <td>
+                                        <button class="btn btn-sm btn-warning" onclick="editPayroll('${p.id}')">Edit</button>
+                                        <button class="btn btn-sm btn-danger" onclick="deletePayroll('${p.id}')">Delete</button>
+                                        ${p.status !== 'paid' ? `<button class="btn btn-sm btn-success" onclick="markPayrollPaid('${p.id}')">Mark Paid</button>` : ''}
+                                    </td>
+                                </tr>`;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        function showPayrollModal(payrollId = null) {
+            const payroll = payrollId ? DB.payroll.find(p => p.id === payrollId) : null;
+            const devs = DB.developers;
+            const projects = DB.projects;
+            const modal = document.getElementById('modalContainer');
+            modal.style.display = 'flex';
+            document.getElementById('modalContent').innerHTML = `
+                <h3>${payroll ? 'Edit' : 'Add'} Payroll Entry</h3>
+                <div class="form-group"><label>Developer</label>
+                    <select id="payDev">
+                        ${devs.map(d => `<option value="${d.id}" ${payroll && payroll.developerId === d.id ? 'selected' : ''}>${d.name}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="form-group"><label>Project</label>
+                    <select id="payProject">
+                        ${projects.map(p => `<option value="${p.id}" ${payroll && payroll.projectId === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="form-group"><label>Amount</label><input type="number" id="payAmount" value="${payroll ? payroll.amount : ''}"></div>
+                <div class="form-group"><label>Period</label><input type="month" id="payPeriod" value="${payroll ? payroll.period : ''}"></div>
+                <div class="form-group"><label>Status</label>
+                    <select id="payStatus">
+                        <option value="pending" ${payroll && payroll.status === 'pending' ? 'selected' : ''}>Pending</option>
+                        <option value="paid" ${payroll && payroll.status === 'paid' ? 'selected' : ''}>Paid</option>
+                    </select>
+                </div>
+                <div class="flex" style="justify-content:flex-end;">
+                    <button class="btn" onclick="closeModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="savePayroll('${payrollId || ''}')">Save</button>
+                </div>
+            `;
+        }
+
+        function savePayroll(id) {
+            const data = {
+                developerId: document.getElementById('payDev').value,
+                projectId: document.getElementById('payProject').value,
+                amount: parseFloat(document.getElementById('payAmount').value),
+                period: document.getElementById('payPeriod').value,
+                status: document.getElementById('payStatus').value,
+            };
+            if (id) {
+                const pay = DB.payroll.find(p => p.id === id);
+                Object.assign(pay, data);
+                if (data.status === 'paid' && !pay.paidAt) pay.paidAt = new Date().toISOString().slice(0,10);
+            } else {
+                const newId = 'pay' + Date.now();
+                DB.payroll.push({ id: newId, ...data, createdAt: new Date().toISOString().slice(0,10), paidAt: data.status === 'paid' ? new Date().toISOString().slice(0,10) : null });
+            }
+            saveData();
+            closeModal();
+            navigate('payroll');
+        }
+
+        function editPayroll(id) { showPayrollModal(id); }
+        function deletePayroll(id) {
+            if (confirm('Delete this payroll entry?')) {
+                DB.payroll = DB.payroll.filter(p => p.id !== id);
+                saveData();
+                navigate('payroll');
+            }
+        }
+        function markPayrollPaid(id) {
+            const pay = DB.payroll.find(p => p.id === id);
+            pay.status = 'paid';
+            pay.paidAt = new Date().toISOString().slice(0,10);
+            addNotification(DB.currentUser.id, `Payroll ${id} marked as paid`, 'payroll');
+            saveData();
+            navigate('payroll');
+        }
+
+        // ==================== GITHUB INTEGRATION ====================
+        function renderGithub(container) {
+            container.innerHTML = `
+                <div class="card">
+                    <h3>GitHub Repositories</h3>
+                    <p>Connected repos for projects. Click "Sync PRs" to simulate syncing pull requests and update tasks.</p>
+                    <table>
+                        <thead><tr><th>Repo</th><th>Connected Project</th><th>Actions</th></tr></thead>
+                        <tbody>
+                            ${DB.githubRepos.map(r => {
+                                const proj = DB.projects.find(p => p.id === r.connectedProject);
+                                return `<tr>
+                                    <td>${r.owner}/${r.name}</td>
+                                    <td>${proj ? proj.name : 'None'}</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-primary" onclick="syncGithubRepo('${r.id}')">Sync PRs</button>
+                                        <button class="btn btn-sm btn-warning" onclick="editGithubRepo('${r.id}')">Edit</button>
+                                        <button class="btn btn-sm btn-danger" onclick="deleteGithubRepo('${r.id}')">Delete</button>
+                                    </td>
+                                </tr>`;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                    <button class="btn btn-primary" style="margin-top:15px;" onclick="showGithubRepoModal()">Add Repository</button>
+                </div>
+                <div class="card">
+                    <h3>Recent Sync Activity</h3>
+                    <ul id="syncLog"></ul>
+                </div>
+            `;
+            // Display mock sync log from localStorage or notifications
+            const syncLog = document.getElementById('syncLog');
+            syncLog.innerHTML = '<li>No sync activity yet.</li>';
+        }
+
+        function showGithubRepoModal(repoId = null) {
+            const repo = repoId ? DB.githubRepos.find(r => r.id === repoId) : null;
+            const projects = DB.projects;
+            const modal = document.getElementById('modalContainer');
+            modal.style.display = 'flex';
+            document.getElementById('modalContent').innerHTML = `
+                <h3>${repo ? 'Edit' : 'Add'} GitHub Repo</h3>
+                <div class="form-group"><label>Owner</label><input type="text" id="repoOwner" value="${repo ? repo.owner : ''}"></div>
+                <div class="form-group"><label>Name</label><input type="text" id="repoName" value="${repo ? repo.name : ''}"></div>
+                <div class="form-group"><label>Connected Project</label>
+                    <select id="repoProject">
+                        <option value="">None</option>
+                        ${projects.map(p => `<option value="${p.id}" ${repo && repo.connectedProject === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="flex" style="justify-content:flex-end;">
+                    <button class="btn" onclick="closeModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="saveGithubRepo('${repoId || ''}')">Save</button>
+                </div>
+            `;
+        }
+
+        function saveGithubRepo(id) {
+            const data = {
+                owner: document.getElementById('repoOwner').value,
+                name: document.getElementById('repoName').value,
+                connectedProject: document.getElementById('repoProject').value,
+            };
+            if (id) {
+                const repo = DB.githubRepos.find(r => r.id === id);
+                Object.assign(repo, data);
+            } else {
+                const newId = 'r' + Date.now();
+                DB.githubRepos.push({ id: newId, ...data });
+            }
+            saveData();
+            closeModal();
+            navigate('github');
+        }
+
+        function editGithubRepo(id) { showGithubRepoModal(id); }
+        function deleteGithubRepo(id) {
+            if (confirm('Delete this repo?')) {
+                DB.githubRepos = DB.githubRepos.filter(r => r.id !== id);
+                saveData();
+                navigate('github');
+            }
+        }
+
+        function syncGithubRepo(repoId) {
+            const repo = DB.githubRepos.find(r => r.id === repoId);
+            if (!repo || !repo.connectedProject) {
+                alert('Repo not connected to a project.');
+                return;
+            }
+            // Simulate syncing: randomly mark some tasks as completed, add new tasks from fake PRs
+            const project = DB.projects.find(p => p.id === repo.connectedProject);
+            const tasks = DB.tasks.filter(t => t.projectId === project.id);
+            // Mark a random in-progress task as completed
+            const inProgressTask = tasks.find(t => t.status === 'in-progress');
+            if (inProgressTask) {
+                inProgressTask.status = 'completed';
+                addNotification(DB.currentUser.id, `Task "${inProgressTask.title}" completed via GitHub sync`, 'github');
+            }
+            // Add a new task for a PR
+            const newTask = {
+                id: 't' + Date.now(),
+                projectId: project.id,
+                title: `Review PR #${Math.floor(Math.random()*100)}`,
+                description: 'Auto-generated from GitHub sync',
+                assigneeId: project.developerIds[0] || '',
+                status: 'pending',
+                dueDate: new Date().toISOString().slice(0,10),
+                githubIssueId: `issue-${Math.floor(Math.random()*1000)}`,
+            };
+            DB.tasks.push(newTask);
+            addNotification(DB.currentUser.id, `New task "${newTask.title}" created from GitHub sync`, 'github');
+            saveData();
+            navigate('github');
+        }
+
+        // ==================== REPORTS ====================
+        function renderReports(container) {
+            const totalRevenue = DB.invoices.filter(i => i.status === 'paid').reduce((s,i) => s + i.amount, 0);
+            const totalPayroll = DB.payroll.reduce((s,p) => s + p.amount, 0);
+            const profit = totalRevenue - totalPayroll;
+            const projectsByStatus = {};
+            DB.projects.forEach(p => { projectsByStatus[p.status] = (projectsByStatus[p.status] || 0) + 1; });
+            container.innerHTML = `
+                <div class="dashboard-stats">
+                    <div class="stat-card"><div class="stat-value">$${totalRevenue.toLocaleString()}</div><div>Total Revenue (Paid)</div></div>
+                    <div class="stat-card"><div class="stat-value">$${totalPayroll.toLocaleString()}</div><div>Total Payroll</div></div>
+                    <div class="stat-card"><div class="stat-value">$${profit.toLocaleString()}</div><div>Profit</div></div>
+                </div>
+                <div class="card">
+                    <h3>Projects by Status</h3>
+                    <table>
+                        <thead><tr><th>Status</th><th>Count</th></tr></thead>
+                        <tbody>
+                            ${Object.entries(projectsByStatus).map(([status, count]) => `<tr><td>${status}</td><td>${count}</td></tr>`).join('') || '<tr><td colspan="2">No data</td></tr>'}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="card">
+                    <h3>Top Clients by Revenue</h3>
+                    <table>
+                        <thead><tr><th>Client</th><th>Paid Amount</th></tr></thead>
+                        <tbody>
+                            ${DB.clients.map(c => {
+                                const paid = DB.invoices.filter(i => i.clientId === c.id && i.status === 'paid').reduce((s,i) => s + i.amount, 0);
+                                return `<tr><td>${c.company}</td><td>$${paid.toLocaleString()}</td></tr>`;
+                            }).sort((a,b) => b.paid - a.paid).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        // ==================== NOTIFICATIONS ====================
+        function renderNotifications(container) {
+            const userNotifs = DB.notifications.filter(n => n.userId === DB.currentUser.id).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+            container.innerHTML = `
+                <div class="card">
+                    <h3>Notifications</h3>
+                    <div id="notifList">
+                        ${userNotifs.length ? userNotifs.map(n => `
+                            <div class="notification-item ${n.read ? '' : 'unread'}" onclick="markNotifRead('${n.id}')">
+                                <strong>${n.message}</strong><br>
+                                <small>${new Date(n.createdAt).toLocaleString()}</small>
+                            </div>
+                        `).join('') : '<p>No notifications</p>'}
+                    </div>
+                    <button class="btn btn-sm" onclick="markAllNotifRead()">Mark All Read</button>
+                </div>
+            `;
+        }
+
+        function addNotification(userId, message, type = 'general') {
+            DB.notifications.push({
+                id: 'n' + Date.now(),
+                userId,
+                message,
+                type,
+                read: false,
+                createdAt: new Date().toISOString(),
+            });
+            saveData();
+        }
+
+        function markNotifRead(id) {
+            const notif = DB.notifications.find(n => n.id === id);
+            if (notif) notif.read = true;
+            saveData();
+            renderNotifications(document.getElementById('content'));
+        }
+
+        function markAllNotifRead() {
+            DB.notifications.forEach(n => { if (n.userId === DB.currentUser.id) n.read = true; });
+            saveData();
+            renderNotifications(document.getElementById('content'));
+        }
+
+        // ==================== CLIENT VIEWS ====================
+        function renderMyProjects(container) {
+            const clientId = DB.currentUser.clientId;
+            const myProjects = DB.projects.filter(p => p.clientId === clientId);
+            container.innerHTML = `
+                <div class="card">
+                    <h3>My Projects</h3>
+                    <table>
+                        <thead><tr><th>Project</th><th>Status</th><th>Budget</th><th>Progress</th><th>Actions</th></tr></thead>
+                        <tbody>
+                            ${myProjects.map(p => {
+                                const tasks = DB.tasks.filter(t => t.projectId === p.id);
+                                const completed = tasks.filter(t => t.status === 'completed').length;
+                                const progress = tasks.length ? Math.round(completed/tasks.length*100) : 0;
+                                return `<tr>
+                                    <td>${p.name}</td>
+                                    <td><span class="badge badge-info">${p.status}</span></td>
+                                    <td>$${p.budget.toLocaleString()}</td>
+                                    <td>${progress}%</td>
+                                    <td><button class="btn btn-sm btn-primary" onclick="viewProjectDetails('${p.id}')">View</button></td>
+                                </tr>`;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        function viewProjectDetails(projectId) {
+            const project = DB.projects.find(p => p.id === projectId);
+            if (!project) return;
+            const tasks = DB.tasks.filter(t => t.projectId === projectId);
+            const container = document.getElementById('content');
+            container.innerHTML = `
+                <div class="card">
+                    <h3>${project.name}</h3>
+                    <p>${project.description}</p>
+                    <p><strong>Budget:</strong> $${project.budget.toLocaleString()}</p>
+                    <p><strong>Status:</strong> ${project.status}</p>
+                    <p><strong>Start:</strong> ${project.startDate} <strong>End:</strong> ${project.endDate}</p>
+                    <h4>Tasks</h4>
+                    <table>
+                        <thead><tr><th>Task</th><th>Status</th><th>Due Date</th></tr></thead>
+                        <tbody>
+                            ${tasks.map(t => `<tr><td>${t.title}</td><td><span class="badge ${t.status === 'completed' ? 'badge-success' : 'badge-warning'}">${t.status}</span></td><td>${t.dueDate || 'N/A'}</td></tr>`).join('')}
+                        </tbody>
+                    </table>
+                    <button class="btn" onclick="navigate('myprojects')">Back</button>
+                </div>
+            `;
+        }
+
+        function renderMyInvoices(container) {
+            const clientId = DB.currentUser.clientId;
+            const myInvoices = DB.invoices.filter(i => i.clientId === clientId);
+            container.innerHTML = `
+                <div class="card">
+                    <h3>My Invoices</h3>
+                    <table>
+                        <thead><tr><th>Invoice ID</th><th>Project</th><th>Amount</th><th>Status</th><th>Due Date</th></tr></thead>
+                        <tbody>
+                            ${myInvoices.map(inv => {
+                                const proj = DB.projects.find(p => p.id === inv.projectId);
+                                return `<tr>
+                                    <td>${inv.id}</td>
+                                    <td>${proj ? proj.name : 'N/A'}</td>
+                                    <td>$${inv.amount.toLocaleString()}</td>
+                                    <td><span class="badge ${inv.status === 'paid' ? 'badge-success' : 'badge-warning'}">${inv.status}</span></td>
+                                    <td>${inv.dueDate}</td>
+                                </tr>`;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        // ==================== DEVELOPER VIEWS ====================
+        function renderMyTasks(container) {
+            const devId = DB.currentUser.developerId;
+            const myTasks = DB.tasks.filter(t => t.assigneeId === devId);
+            container.innerHTML = `
+                <div class="card">
+                    <h3>My Tasks</h3>
+                    <table>
+                        <thead><tr><th>Task</th><th>Project</th><th>Status</th><th>Due Date</th><th>Action</th></tr></thead>
+                        <tbody>
+                            ${myTasks.map(t => {
+                                const proj = DB.projects.find(p => p.id === t.projectId);
+                                return `<tr>
+                                    <td>${t.title}</td>
+                                    <td>${proj ? proj.name : 'N/A'}</td>
+                                    <td><span class="badge ${t.status === 'completed' ? 'badge-success' : t.status === 'in-progress' ? 'badge-warning' : 'badge-info'}">${t.status}</span></td>
+                                    <td>${t.dueDate || 'N/A'}</td>
+                                    <td>
+                                        ${t.status !== 'completed' ? `<button class="btn btn-sm btn-success" onclick="completeTask('${t.id}')">Mark Complete</button>` : ''}
+                                    </td>
+                                </tr>`;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        function completeTask(taskId) {
+            const task = DB.tasks.find(t => t.id === taskId);
+            if (task) {
+                task.status = 'completed';
+                addNotification(DB.currentUser.id, `Task "${task.title}" marked as completed`, 'task');
+                saveData();
+                navigate('mytasks');
+            }
+        }
+
+        function renderMyPayroll(container) {
+            const devId = DB.currentUser.developerId;
+            const myPayroll = DB.payroll.filter(p => p.developerId === devId);
+            container.innerHTML = `
+                <div class="card">
+                    <h3>My Payroll</h3>
+                    <table>
+                        <thead><tr><th>Period</th><th>Project</th><th>Amount</th><th>Status</th></tr></thead>
+                        <tbody>
+                            ${myPayroll.map(p => {
+                                const proj = DB.projects.find(pr => pr.id === p.projectId);
+                                return `<tr>
+                                    <td>${p.period}</td>
+                                    <td>${proj ? proj.name : 'N/A'}</td>
+                                    <td>$${p.amount.toLocaleString()}</td>
+                                    <td><span class="badge ${p.status === 'paid' ? 'badge-success' : 'badge-warning'}">${p.status}</span></td>
+                                </tr>`;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        // ==================== MODAL UTILITIES ====================
+        function closeModal() {
+            document.getElementById('modalContainer').style.display = 'none';
+        }
+
+        // ==================== INIT ====================
+        loadData();
+        if (DB.currentUser) {
+            initApp();
+        } else {
+            showLogin();
+        }
+    </script>
+</body>
+</html>
